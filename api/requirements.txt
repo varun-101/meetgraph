@@ -8,27 +8,28 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 
-# Auth
-fastapi-users[sqlalchemy]
+# Auth (v15 verified 2026-07-03: drop-py3.9/pydantic-v1 only breaking changes)
+fastapi-users[sqlalchemy]==15.0.5
 
 # DB
-sqlalchemy[asyncio]
+sqlalchemy[asyncio]>=2.0,<2.1
 asyncpg
 psycopg[binary]
 alembic
 
-# LiveKit
-livekit
-livekit-api
+# LiveKit (verified 2026-07-03: livekit 1.1.13 rtc w/ win_amd64 wheel, livekit-api 1.1.1)
+livekit==1.1.13
+livekit-api==1.1.1
 
-# Capture / STT
-faster-whisper
+# Capture / STT (faster-whisper 1.2.1, ctranslate2 CPU int8 fine on Windows)
+faster-whisper==1.2.1
 soundfile
 numpy
 
-# Memory
-cognee            # PIN exact version after research (§8: pin, upgrade deliberately)
-fastembed
+# Memory — §8: pin cognee, upgrade deliberately in a branch with isolation tests green.
+# postgres-binary extra (psycopg2-binary — [postgres] compiles from source on Windows);
+# fastembed extra for local embeddings (not in base install).
+cognee[postgres-binary,fastembed]==1.2.2
 
 # LLM (action-item extractor talks to DeepSeek directly, OpenAI-compatible)
 openai

@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   meetgraph — "vault graphite" theme.
+   Dark-first ops surface: blue-graphite chrome, jade reserved for
+   primary actions and ready states, red strictly means live/recording.
+   Speaker hues are their own family, never reused for status.
+------------------------------------------------------------------- */
+
+@theme {
+  --color-bg: #0c0f13;
+  --color-surface: #12161c;
+  --color-raised: #181d25;
+  --color-hover: #1d232d;
+  --color-edge: #232a35;
+  --color-edge-strong: #303947;
+
+  --color-ink: #e8edf4;
+  --color-ink-dim: #aab4c4;
+  --color-muted: #8c96a8;
+  --color-faint: #5c6678;
+
+  --color-accent: #3ddc97;
+  --color-accent-dim: #2ba572;
+  --color-accent-ink: #062b1c;
+
+  --color-live: #ff6b6b;
+  --color-warn: #f5b84b;
+  --color-info: #6ea8fe;
+  --color-danger: #f06a6a;
+
+  --font-sans: var(--font-public-sans), "Public Sans", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.45);
+    }
+    50% {
+      opacity: 0.7;
+      box-shadow: 0 0 0 4px rgba(255, 107, 107, 0);
+    }
+  }
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-size: 14px;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(61, 220, 151, 0.25);
+}
+
+/* Focus visibility — quality floor, no announcement. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-dim);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* Thin scrollbars for the dense panes. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-edge-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Markdown (project brief) — hand-styled, no typography plugin.
+------------------------------------------------------------------- */
+.markdown {
+  line-height: 1.65;
+  color: var(--color-ink-dim);
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  color: var(--color-ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 1.6em 0 0.5em;
+}
+.markdown h1 {
+  font-size: 1.35rem;
+}
+.markdown h2 {
+  font-size: 1.15rem;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--color-edge);
+}
+.markdown h3 {
+  font-size: 1rem;
+}
+.markdown h1:first-child,
+.markdown h2:first-child,
+.markdown h3:first-child {
+  margin-top: 0;
+}
+.markdown p {
+  margin: 0.7em 0;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0.7em 0;
+  padding-left: 1.4em;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li {
+  margin: 0.3em 0;
+}
+.markdown strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.markdown a {
+  color: var(--color-info);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-raised);
+  border: 1px solid var(--color-edge);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.markdown pre {
+  background: var(--color-raised);
+  border: 1px solid var(--color-edge);
+  border-radius: 8px;
+  padding: 0.9em 1em;
+  overflow-x: auto;
+  margin: 0.9em 0;
+}
+.markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+.markdown blockquote {
+  border-left: 3px solid var(--color-edge-strong);
+  padding-left: 1em;
+  margin: 0.9em 0;
+  color: var(--color-muted);
+}
+.markdown table {
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  width: 100%;
+  font-size: 0.9em;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid var(--color-edge);
+  padding: 0.45em 0.7em;
+  text-align: left;
+}
+.markdown th {
+  color: var(--color-ink);
+  background: var(--color-raised);
+}
+.markdown hr {
+  border: none;
+  border-top: 1px solid var(--color-edge);
+  margin: 1.4em 0;
+}

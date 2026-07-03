@@ -1,0 +1,18 @@
+# LiveKit DEV config — like `--dev` but with webhooks enabled (dev mode alone
+# can't register webhook URLs). Run from repo root:
+#
+#   livekit-server --config infra/livekit-dev.yaml --bind 127.0.0.1
+#
+# Same predefined credentials as --dev: devkey / secret.
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+keys:
+  devkey: secret
+webhook:
+  api_key: devkey
+  urls:
+    - http://localhost:8000/webhooks/livekit
+logging:
+  level: info

@@ -23,8 +23,8 @@ python -m venv .venv
 .venv\Scripts\alembic upgrade head
 .venv\Scripts\uvicorn api.main:app --reload --port 8000
 
-# 4. LiveKit (dev mode: key=devkey secret=secret, ws://localhost:7880)
-livekit-server --dev
+# 4. LiveKit (dev keys devkey/secret; config enables webhooks -> API)
+livekit-server --config infra\livekit-dev.yaml --bind 127.0.0.1
 
 # 5. Web
 cd web; npm install; npm run dev
