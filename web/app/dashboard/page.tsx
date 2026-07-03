@@ -16,6 +16,7 @@ import {
   createMeeting,
   createOrg,
   createProject,
+  forgetProjectMemory,
   listMeetings,
   listProjects,
 } from "@/lib/api";
@@ -155,6 +156,29 @@ function Dashboard() {
             >
               Action tracker
             </Link>
+            {me.orgs.some((o) => o.org_id === orgId && o.role === "admin") && (
+              <button
+                onClick={async () => {
+                  if (
+                    !window.confirm(
+                      `Permanently delete ALL memory for "${project.name}"?\n\nKnowledge graph, transcripts, recordings, and action items are destroyed. Meetings stay as calendar entries. This cannot be undone.`,
+                    )
+                  )
+                    return;
+                  try {
+                    await forgetProjectMemory(project.id);
+                    setMeetings(null);
+                    setError(null);
+                    window.alert("Project memory deleted (audited as forget).");
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "Delete failed");
+                  }
+                }}
+                className="block w-full rounded-md px-3 py-1.5 text-left text-sm text-danger/80 hover:bg-danger/10 hover:text-danger"
+              >
+                Delete project memory…
+              </button>
+            )}
           </div>
         )}
       </aside>

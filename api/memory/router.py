@@ -157,7 +157,9 @@ async def forget_project(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """§4.2: delete/forget dataset = org admin only. GDPR path (P5)."""
+    """§4.2 + DoD #5: delete a project's memory ENTIRELY — cognee dataset,
+    recordings (rows + files), transcripts, action items, decks, brief cache.
+    Org admin only. Meetings rows stay as calendar history. GDPR path (P5)."""
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "project not found")
@@ -168,6 +170,61 @@ async def forget_project(
         await memory_service.forget_dataset(project.org_id, dataset)
     except MemoryUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+    removed = await purge_local_artifacts(session, project_id)
     await write_audit(session, project.org_id, user.id, "forget", dataset)
     await session.commit()
-    return {"status": "forgotten", "dataset": dataset}
+    return {"status": "forgotten", "dataset": dataset, **removed}
+
+
+async def purge_local_artifacts(session: AsyncSession, project_id: uuid.UUID) -> dict:
+    """Delete everything derived from meeting content, DB rows and disk files.
+    Caller commits."""
+    import contextlib
+    from pathlib import Path
+
+    from sqlalchemy import delete as sa_delete, select as sa_select
+
+    from api.config import settings
+    from api.models import ActionItem, Meeting, Recording, SyncState, Transcript
+
+    meeting_ids = (
+        await session.execute(sa_select(Meeting.id).where(Meeting.project_id == project_id))
+    ).scalars().all()
+
+    files_removed = 0
+    if meeting_ids:
+        recordings = (
+            await session.execute(
+                sa_select(Recording).where(Recording.meeting_id.in_(meeting_ids))
+            )
+        ).scalars().all()
+        for rec in recordings:
+            p = Path(rec.file_path)
+            if p.exists():
+                p.unlink(missing_ok=True)
+                files_removed += 1
+        for mid in meeting_ids:
+            # per-meeting dirs (WAVs written before rows existed) + deck files
+            for d in (
+                Path(settings.recordings_dir) / str(mid),
+                Path(settings.recordings_dir).resolve() / "decks",
+            ):
+                if d.name == "decks":
+                    for f in d.glob(f"{mid}.*") if d.exists() else []:
+                        f.unlink(missing_ok=True)
+                        files_removed += 1
+                elif d.exists():
+                    for f in d.glob("*.wav"):
+                        f.unlink(missing_ok=True)
+                        files_removed += 1
+                    with contextlib.suppress(OSError):
+                        d.rmdir()
+
+        await session.execute(sa_delete(Recording).where(Recording.meeting_id.in_(meeting_ids)))
+        await session.execute(sa_delete(Transcript).where(Transcript.meeting_id.in_(meeting_ids)))
+    await session.execute(sa_delete(ActionItem).where(ActionItem.project_id == project_id))
+    cache = await session.get(SyncState, f"brief:{project_id}")
+    if cache is not None:
+        await session.delete(cache)
+    return {"meetings_purged": len(meeting_ids), "files_removed": files_removed}

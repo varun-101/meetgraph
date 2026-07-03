@@ -20,6 +20,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="meetgraph", version="0.1.0", lifespan=lifespan)
 
+# P5 guard: never boot production with the template JWT secret.
+if settings.app_env == "prod" and settings.jwt_secret == "change-me-32-bytes-min":
+    raise RuntimeError("APP_ENV=prod with the default JWT_SECRET — set a real secret in .env")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_origin],
@@ -27,6 +31,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from api.ratelimit import rate_limit_middleware  # noqa: E402
+
+app.middleware("http")(rate_limit_middleware)
 
 # --- Router registration (contract: each module exposes `router`) ---
 from api.auth.router import router as auth_router          # noqa: E402

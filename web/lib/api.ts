@@ -198,6 +198,12 @@ export const searchMemory = (req: SearchRequest) =>
     body: JSON.stringify(req),
   });
 
+export const forgetProjectMemory = (projectId: string) =>
+  apiFetch<{ status: string; meetings_purged?: number; files_removed?: number }>(
+    `/memory/project/${projectId}`,
+    { method: "DELETE" },
+  );
+
 export const getBrief = (projectId: string) =>
   apiFetch<{
     project_id: string;
