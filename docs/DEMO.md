@@ -1,5 +1,10 @@
 # meetgraph — demo video script & cognee walkthrough
 
+> 🎞️ A ready-made 37s animated intro lives at
+> [intro/meetgraph-intro.webm](intro/meetgraph-intro.webm) (rendered from
+> [intro/intro.html](intro/intro.html) — open it in a browser to replay or
+> re-record at any resolution). Use it as the cold open before the live demo.
+
 Target length: **5–6 minutes**. Every scene lists what's on screen, what you
 say (verbatim, edit freely), and rough timing. Total speaking pace ~140 wpm.
 

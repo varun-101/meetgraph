@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>meetgraph — intro</title>
+<style>
+  /* vault-graphite tokens */
+  :root {
+    --bg: #0c0f13; --surface: #12161c; --raised: #181d25; --edge: #232a35;
+    --edge2: #303947; --ink: #e8edf4; --dim: #aab4c4; --muted: #8c96a8;
+    --faint: #5c6678; --jade: #3ddc97; --jade2: #2ba572; --live: #ff6b6b;
+    --blue: #6ea8fe; --amber: #f5b84b;
+    --sans: "Segoe UI", system-ui, sans-serif;
+    --mono: Consolas, "IBM Plex Mono", monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 720px; overflow: hidden; background: var(--bg); }
+  body { font-family: var(--sans); color: var(--ink); }
+
+  #stage { position: relative; width: 1280px; height: 720px; }
+
+  /* ambient */
+  #stage::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(700px 420px at 70% 30%, rgba(61,220,151,0.05), transparent 70%),
+      radial-gradient(600px 400px at 20% 80%, rgba(110,168,254,0.04), transparent 70%);
+  }
+
+  .scene { position: absolute; inset: 0; display: flex; align-items: center;
+           justify-content: center; flex-direction: column; opacity: 0; }
+  @keyframes scene { 0% {opacity:0} 7% {opacity:1} 93% {opacity:1} 100% {opacity:0} }
+  @keyframes scene-hold { 0% {opacity:0} 10% {opacity:1} 100% {opacity:1} }
+
+  .kicker { font: 600 15px/1 var(--mono); letter-spacing: 0.22em; color: var(--jade);
+            text-transform: uppercase; margin-bottom: 26px; }
+  .cap { position: absolute; bottom: 64px; left: 0; right: 0; text-align: center;
+         font: 400 21px/1.5 var(--sans); color: var(--muted); }
+  .cap b { color: var(--ink); font-weight: 600; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); }
+                    to { opacity: 1; transform: none; } }
+  @keyframes pop  { 0% { opacity: 0; transform: scale(0.55); }
+                    70% { transform: scale(1.06); }
+                    100% { opacity: 1; transform: scale(1); } }
+
+  /* ============ S1 title 0–5s ============ */
+  #s1 { animation: scene 5s 0s both; }
+  #s1 .logo { font: 700 34px var(--mono); letter-spacing: -0.02em;
+              animation: rise .7s .3s both; }
+  #s1 .logo em { color: var(--jade); font-style: normal; }
+  #s1 h1 { font-size: 84px; font-weight: 800; letter-spacing: -0.03em;
+           line-height: 1.08; text-align: center; margin-top: 34px; }
+  #s1 .l1 { animation: rise .7s .9s both; display: block; }
+  #s1 .l2 { animation: rise .7s 1.5s both; display: block; }
+  #s1 .l2 i { font-style: normal; color: var(--jade); }
+  #s1 .evap { display: inline-block; color: var(--muted);
+              animation: evap 2.6s both; animation-delay: calc(2.1s + var(--d)); }
+  @keyframes evap { 0% { opacity:1; filter:none; transform:none; }
+    55% { opacity: .06; filter: blur(6px); transform: translateY(-22px) rotate(4deg); }
+    100% { opacity: .55; filter: none; transform: none; } }
+
+  /* ============ S2 the room 5–11s ============ */
+  #s2 { animation: scene 6s 5s both; }
+  .tiles { display: flex; gap: 22px; }
+  .tile { width: 330px; height: 218px; border-radius: 14px; position: relative;
+          border: 1px solid var(--edge2); overflow: hidden;
+          background: linear-gradient(160deg, var(--raised), var(--surface)); }
+  .tile.mia { animation: pop .6s 5.7s both; }
+  .tile.max { animation: pop .6s 6.1s both; }
+  .tile .avatar { position: absolute; inset: 0; display: flex; align-items: center;
+                  justify-content: center; font: 700 64px var(--sans); }
+  .tile.mia .avatar { color: var(--blue); }
+  .tile.max .avatar { color: var(--amber); }
+  .tile .name { position: absolute; left: 12px; bottom: 10px; display: flex;
+                align-items: center; gap: 8px;
+                font: 500 13px var(--mono); color: var(--dim); }
+  .rec { position: absolute; top: 46px; font: 600 14px var(--mono); color: var(--live);
+         display: flex; align-items: center; gap: 8px; left: 50%;
+         transform: translateX(-50%); animation: rise .5s 6.6s both; top: 150px; }
+  .rec i { width: 9px; height: 9px; border-radius: 50%; background: var(--live);
+           animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.3} }
+  .wave { display: inline-flex; gap: 2.5px; height: 14px; align-items: center; }
+  .wave i { width: 3px; height: 100%; border-radius: 2px; background: currentColor;
+            transform-origin: center; animation: bar .7s ease-in-out infinite; }
+  .wave i:nth-child(2) { animation-delay: .12s; } .wave i:nth-child(3) { animation-delay: .24s; }
+  .wave i:nth-child(4) { animation-delay: .08s; } .wave i:nth-child(5) { animation-delay: .2s; }
+  @keyframes bar { 0%,100% { transform: scaleY(.25);} 50% { transform: scaleY(1);} }
+  #s2 .cap { animation: rise .6s 7s both; }
+
+  /* ============ S3 capture → transcript 11–17s ============ */
+  #s3 { animation: scene 6s 11s both; }
+  .term { width: 780px; border: 1px solid var(--edge); border-radius: 14px;
+          background: var(--surface); box-shadow: 0 30px 80px rgba(0,0,0,.5);
+          animation: rise .6s 11.5s both; }
+  .term header { padding: 12px 20px; border-bottom: 1px solid var(--edge);
+                 font: 500 13px var(--mono); color: var(--faint);
+                 display: flex; justify-content: space-between; }
+  .term .body { padding: 22px 24px 26px; font: 400 16.5px/1.7 var(--mono); }
+  .tr { display: flex; gap: 12px; margin-bottom: 14px; }
+  .tr .t { color: var(--faint); }
+  .tr .who.mia { color: var(--blue); } .tr .who.max { color: var(--amber); }
+  .typeline { overflow: hidden; white-space: nowrap; width: 0; color: var(--dim); }
+  .tr1 { animation: rise .4s 12s both; }
+  .tr1 .typeline { animation: type-w 2.2s steps(44) 12.2s forwards; max-width: 44ch; }
+  .tr2 { animation: rise .4s 14.6s both; }
+  .tr2 .typeline { animation: type-w 1.9s steps(38) 14.8s forwards; max-width: 38ch; }
+  @keyframes type-w { from { width: 0; } to { width: 100%; } }
+  #s3 .cap { animation: rise .6s 12.4s both; }
+
+  /* ============ S4 graph 17–23s ============ */
+  #s4 { animation: scene 6s 17s both; }
+  .graph { position: relative; width: 860px; height: 380px; }
+  .node { position: absolute; border-radius: 999px; padding: 12px 22px;
+          font: 600 15px var(--mono); background: var(--raised);
+          border: 1.5px solid; white-space: nowrap; }
+  .n-meet { left: 350px; top: 160px; color: var(--ink); border-color: var(--edge2);
+            animation: pop .55s 17.6s both; }
+  .n-dec  { left: 90px;  top: 40px;  color: var(--jade); border-color: rgba(61,220,151,.55);
+            animation: pop .55s 18.4s both; }
+  .n-mia  { left: 620px; top: 40px;  color: var(--blue); border-color: rgba(110,168,254,.55);
+            animation: pop .55s 18.9s both; }
+  .n-act  { left: 70px;  top: 290px; color: var(--amber); border-color: rgba(245,184,75,.55);
+            animation: pop .55s 19.4s both; }
+  .n-max  { left: 640px; top: 290px; color: var(--amber); border-color: rgba(245,184,75,.4);
+            animation: pop .55s 19.9s both; }
+  .graph svg { position: absolute; inset: 0; }
+  .graph line { stroke: var(--edge2); stroke-width: 1.6;
+                stroke-dasharray: 400; stroke-dashoffset: 400;
+                animation: draw 0.9s forwards; }
+  .graph line.e1 { animation-delay: 18.6s; } .graph line.e2 { animation-delay: 19.1s; }
+  .graph line.e3 { animation-delay: 19.6s; } .graph line.e4 { animation-delay: 20.1s; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  #s4 .cap { animation: rise .6s 18.4s both; }
+
+  /* ============ S5 the answer 23–29s ============ */
+  #s5 { animation: scene 6s 23s both; }
+  .ask { width: 760px; font: 500 22px var(--mono); }
+  .ask .q { color: var(--ink); animation: rise .5s 23.5s both; }
+  .ask .q i { color: var(--jade); font-style: normal; }
+  .ask .q .typeline { display: inline-block; vertical-align: bottom; width: 0;
+        animation: type-w 1.7s steps(41) 23.8s forwards; max-width: 41ch;
+        overflow: hidden; white-space: nowrap; }
+  .answer { margin-top: 30px; border-left: 3px solid var(--jade);
+            background: var(--raised); border-radius: 10px; padding: 24px 28px;
+            font: 400 21px/1.6 var(--sans); color: var(--dim);
+            animation: rise .6s 25.9s both; }
+  .answer b { color: var(--ink); }
+  .cite { margin-top: 14px; font: 500 14px var(--mono); color: var(--faint);
+          animation: rise .5s 26.7s both; }
+  .cite i { color: var(--jade); font-style: normal; }
+  .cite u { text-decoration-color: var(--edge2); text-underline-offset: 3px; }
+  #s5 .cap { animation: rise .6s 24.4s both; }
+
+  /* ============ S6 presenter + end 29–36s ============ */
+  #s6 { animation: scene-hold 7s 29s both; }
+  .joined { display: flex; align-items: center; gap: 12px; font: 500 17px var(--mono);
+            color: var(--dim); border: 1px solid var(--edge2); border-radius: 999px;
+            padding: 12px 24px; background: var(--surface);
+            animation: pop .6s 29.5s both; }
+  .joined .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--jade); }
+  .slide { margin-top: 26px; width: 560px; border-radius: 12px; overflow: hidden;
+           border: 1px solid var(--edge2); background: var(--surface);
+           animation: rise .6s 30.3s both; }
+  .slide .bar { height: 8px; background: linear-gradient(90deg, var(--jade2), transparent); }
+  .slide .inner { padding: 22px 26px 24px; }
+  .slide h3 { font-size: 22px; letter-spacing: -0.01em; }
+  .slide ul { margin-top: 12px; list-style: none; }
+  .slide li { font: 400 15px/1.7 var(--sans); color: var(--muted); padding-left: 18px;
+              position: relative; }
+  .slide li::before { content: ""; position: absolute; left: 2px; top: 10px; width: 7px;
+                      height: 7px; border-radius: 2px; background: var(--jade2); }
+  .speech { display: flex; gap: 10px; align-items: center; margin-top: 22px;
+            font: 500 13px var(--mono); color: var(--jade);
+            animation: rise .5s 31s both; }
+  .end { position: absolute; inset: 0; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; background: var(--bg);
+         opacity: 0; animation: scene-hold 4s 32.6s both; }
+  .end .logo { font: 700 56px var(--mono); letter-spacing: -0.02em;
+               animation: pop .7s 33s both; }
+  .end .logo em { color: var(--jade); font-style: normal; }
+  .end .sub { margin-top: 16px; font: 400 19px var(--sans); color: var(--muted);
+              animation: rise .6s 33.5s both; }
+  .end .repo { margin-top: 30px; font: 500 15px var(--mono); color: var(--faint);
+               border: 1px solid var(--edge); padding: 10px 22px; border-radius: 999px;
+               animation: rise .6s 34s both; }
+  .end .repo i { color: var(--jade); font-style: normal; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- S1: title -->
+  <section class="scene" id="s1">
+    <div class="logo">meet<em>graph</em></div>
+    <h1>
+      <span class="l1">Meetings
+        <span class="evap" style="--d:0s">e</span><span class="evap" style="--d:.06s">v</span><span class="evap" style="--d:.12s">a</span><span class="evap" style="--d:.18s">p</span><span class="evap" style="--d:.24s">o</span><span class="evap" style="--d:.3s">r</span><span class="evap" style="--d:.36s">a</span><span class="evap" style="--d:.42s">t</span><span class="evap" style="--d:.48s">e</span><span class="evap" style="--d:.54s">.</span>
+      </span>
+      <span class="l2">Yours won&rsquo;t<i>.</i></span>
+    </h1>
+  </section>
+
+  <!-- S2: the room -->
+  <section class="scene" id="s2">
+    <p class="kicker">your call · your servers</p>
+    <div class="tiles">
+      <div class="tile mia">
+        <div class="avatar">M</div>
+        <div class="name" style="color:var(--blue)"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span> Mia Manager</div>
+      </div>
+      <div class="tile max">
+        <div class="avatar">M</div>
+        <div class="name" style="color:var(--amber)"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span> Max Member</div>
+      </div>
+    </div>
+    <div class="rec"><i></i> REC — one audio track per speaker</div>
+    <p class="cap">Self-hosted video on <b>LiveKit</b>. A hidden bot records <b>every speaker separately</b>.</p>
+  </section>
+
+  <!-- S3: transcript -->
+  <section class="scene" id="s3">
+    <div class="term">
+      <header><span>transcript — q3 planning</span><span>auto · no manual steps</span></header>
+      <div class="body">
+        <div class="tr tr1">
+          <span class="t">[00:12]</span><span class="who mia">Mia:</span>
+          <span class="typeline">I'm moving the launch to September&nbsp;17th.</span>
+        </div>
+        <div class="tr tr2">
+          <span class="t">[00:31]</span><span class="who max">Max:</span>
+          <span class="typeline">Payment gateway done by August&nbsp;30th.</span>
+        </div>
+      </div>
+    </div>
+    <p class="cap">Whisper transcribes each track. <b>Who said what is a fact</b> — not a diarization guess.</p>
+  </section>
+
+  <!-- S4: the graph -->
+  <section class="scene" id="s4">
+    <p class="kicker">cognee · knowledge graph</p>
+    <div class="graph">
+      <svg viewBox="0 0 860 380">
+        <line class="e1" x1="430" y1="170" x2="210" y2="70" />
+        <line class="e2" x1="470" y1="170" x2="680" y2="70" />
+        <line class="e3" x1="420" y1="200" x2="200" y2="300" />
+        <line class="e4" x1="480" y1="200" x2="700" y2="300" />
+      </svg>
+      <div class="node n-meet">Meeting · q3 planning</div>
+      <div class="node n-dec">Decision · Sept 17</div>
+      <div class="node n-mia">Person · Mia</div>
+      <div class="node n-act">Action · Aug 30</div>
+      <div class="node n-max">Person · Max</div>
+    </div>
+    <p class="cap">Every meeting becomes <b>decisions, owners, deadlines, topics</b> — linked, on your Postgres.</p>
+  </section>
+
+  <!-- S5: the answer -->
+  <section class="scene" id="s5">
+    <div class="ask">
+      <p class="q"><i>›</i> <span class="typeline">what did we decide about the launch date?</span></p>
+      <div class="answer">
+        Launch moved to <b>September 17th</b> — decided by Mia Manager after the load-test review.
+        <div class="cite"><i>⌁</i> cited — q3 planning, <u>00:12</u></div>
+      </div>
+    </div>
+    <p class="cap"><b>Answers with receipts.</b> Every claim links to the exact transcript moment.</p>
+  </section>
+
+  <!-- S6: presenter + end card -->
+  <section class="scene" id="s6">
+    <div class="joined"><span class="dot"></span> Presenter joined the meeting</div>
+    <div class="slide">
+      <div class="bar"></div>
+      <div class="inner">
+        <h3>Project Apollo — status</h3>
+        <ul>
+          <li>Launch: September 17th (decided in q3 planning)</li>
+          <li>Payment gateway — Max, due Aug 30</li>
+        </ul>
+      </div>
+    </div>
+    <div class="speech"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span> presenting from the knowledge graph…</div>
+    <p class="cap">An AI presenter <b>shares, narrates, answers, and files action items</b> — live in your call.</p>
+
+    <div class="end">
+      <div class="logo">meet<em>graph</em></div>
+      <p class="sub">Self-hosted meeting intelligence — built on cognee.</p>
+      <p class="repo"><i>›</i> github.com/varun-101/meetgraph</p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
