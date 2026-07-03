@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+*.tsbuildinfo
+npm-debug.log*
+
+# Env & secrets — only .env.template is committed
+.env
+.env.*
+!.env.template
+
+# Data artifacts
+recordings/
+*.wav
+*.ogg
+models/            # whisper / fastembed model caches
+.cognee*/
+cognee_data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

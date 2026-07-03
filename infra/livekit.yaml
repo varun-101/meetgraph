@@ -1,0 +1,21 @@
+# LiveKit production config (P5 deploy — dev uses `livekit-server --dev`).
+# Docs: https://docs.livekit.io/home/self-hosting/deployment/
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+redis:
+  address: redis:6379          # required once Egress is enabled (P5)
+keys:
+  # Generate with: livekit-server generate-keys  — NEVER ship to browser
+  REPLACE_API_KEY: REPLACE_API_SECRET
+turn:
+  enabled: true
+  domain: turn.example.com     # TLS on 443 — corporate-NAT attendees (§7)
+  tls_port: 443
+webhook:
+  api_key: REPLACE_API_KEY
+  urls:
+    - https://api.example.com/webhooks/livekit

@@ -1,0 +1,75 @@
+# meetgraph deploy stack (P5). Dev runs native (§3.3); the P5 gate is a green
+# full run under this compose before VPS deploy. Shares .env with native dev.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: meetgraph
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-meetgraph}
+      POSTGRES_DB: meetgraph
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/bootstrap.sql:/docker-entrypoint-initdb.d/10-bootstrap.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meetgraph"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine        # required only by Egress
+
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./infra/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-60000:50000-60000/udp"
+    depends_on: [redis]
+
+  egress:
+    image: livekit/egress:latest
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./infra/egress.yaml:/etc/egress.yaml:ro
+      - recordings:/out
+    depends_on: [redis, livekit]
+
+  api:
+    build: { context: ., dockerfile: infra/Dockerfile.api }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://meetgraph:${DB_PASSWORD:-meetgraph}@db:5432/meetgraph
+      RECORDINGS_DIR: /recordings
+    volumes:
+      - recordings:/recordings
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  stt:
+    build: { context: ., dockerfile: infra/Dockerfile.api }
+    command: python -m stt.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://meetgraph:${DB_PASSWORD:-meetgraph}@db:5432/meetgraph
+      RECORDINGS_DIR: /recordings
+    volumes:
+      - recordings:/recordings
+      - whisper-models:/root/.cache/huggingface
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: { context: ./web, dockerfile: ../infra/Dockerfile.web }
+    env_file: .env
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  recordings:
+  whisper-models:

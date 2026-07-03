@@ -1,0 +1,47 @@
+# meetgraph API + workers — Python 3.11+ (Windows-native dev supported)
+# Versions pinned during integration pass; agents may tighten pins with
+# verified-current versions but must not remove entries.
+
+# Web framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Auth
+fastapi-users[sqlalchemy]
+
+# DB
+sqlalchemy[asyncio]
+asyncpg
+psycopg[binary]
+alembic
+
+# LiveKit
+livekit
+livekit-api
+
+# Capture / STT
+faster-whisper
+soundfile
+numpy
+
+# Memory
+cognee            # PIN exact version after research (§8: pin, upgrade deliberately)
+fastembed
+
+# LLM (action-item extractor talks to DeepSeek directly, OpenAI-compatible)
+openai
+
+# Scheduling
+apscheduler
+
+# Utilities
+httpx
+python-multipart
+
+# Dev / test
+pytest
+pytest-asyncio
+aiosqlite
+ruff

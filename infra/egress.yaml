@@ -1,0 +1,8 @@
+# LiveKit Egress config (P5 — replaces the dev recorder bot).
+# Track egress, audio-only, per participant → shared volume with STT worker.
+redis:
+  address: redis:6379
+api_key: REPLACE_API_KEY
+api_secret: REPLACE_API_SECRET
+ws_url: ws://livekit:7880
+insecure: true          # behind reverse proxy in same compose network

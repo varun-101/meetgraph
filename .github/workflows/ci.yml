@@ -1,0 +1,30 @@
+# CI (plan P0 gate): lint + tests, with the cross-org/cross-project isolation
+# tests (§4.4) as a hard gate — job fails if they fail.
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r api/requirements.txt
+      - run: ruff check api stt tests
+      - name: Isolation tests (RBAC gate)
+        run: pytest tests/test_isolation.py -v
+      - name: Full test suite
+        run: pytest tests -v
+
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - run: npm run build
