@@ -172,6 +172,10 @@ export const searchMemory = (req: SearchRequest) =>
   });
 
 export const getBrief = (projectId: string) =>
-  apiFetch<{ project_id: string; markdown: string; citations: (string | object)[] }>(
-    `/memory/brief/${projectId}`,
-  );
+  apiFetch<{
+    project_id: string;
+    markdown: string;
+    citations: (string | object)[];
+    generated_at?: string;
+    cached?: boolean;
+  }>(`/memory/brief/${projectId}`);

@@ -51,12 +51,49 @@ async def search(
 @router.get("/brief/{project_id}")
 async def brief(
     project_id: uuid.UUID,
+    force: bool = False,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Pre-meeting brief: open decisions, action items, recent topics."""
+    """Pre-meeting brief: open decisions, action items, recent topics.
+
+    Cached in sync_state until the project's memory changes (fingerprint =
+    latest add/cognify audit ts for the dataset). ?force=true regenerates.
+    """
+    import json
+
+    from sqlalchemy import func, select as sa_select
+
+    from api.models import AuditLog, SyncState
+
     project = await ensure_project_access(session, user, project_id, min_role="member")
     dataset = dataset_for_project(project_id)
+
+    last_write = (
+        await session.execute(
+            sa_select(func.max(AuditLog.ts)).where(
+                AuditLog.dataset == dataset, AuditLog.op.in_(["add", "cognify"])
+            )
+        )
+    ).scalar_one_or_none()
+    fingerprint = last_write.isoformat() if last_write else "empty"
+
+    cache_key = f"brief:{project_id}"
+    cached_row = await session.get(SyncState, cache_key)
+    if cached_row and not force:
+        try:
+            cached = json.loads(cached_row.value or "{}")
+            if cached.get("fingerprint") == fingerprint:
+                return {
+                    "project_id": str(project_id),
+                    "markdown": cached["markdown"],
+                    "citations": cached.get("citations", []),
+                    "generated_at": cached.get("generated_at"),
+                    "cached": True,
+                }
+        except (ValueError, KeyError):
+            pass  # corrupt cache — regenerate
+
     query = (
         f"Produce a concise pre-meeting brief for project '{project.name}' as markdown "
         "with sections: Recent Decisions (with who made them), Open Action Items "
@@ -66,9 +103,31 @@ async def brief(
         result = await memory_service.search(project.org_id, [dataset], query)
     except MemoryUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+    from datetime import datetime, timezone
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    payload = json.dumps(
+        {
+            "fingerprint": fingerprint,
+            "markdown": result["answer"],
+            "citations": result["citations"],
+            "generated_at": generated_at,
+        }
+    )
+    if cached_row:
+        cached_row.value = payload
+    else:
+        session.add(SyncState(key=cache_key, value=payload))
     await write_audit(session, project.org_id, user.id, "search", dataset)
     await session.commit()
-    return {"project_id": str(project_id), "markdown": result["answer"], "citations": result["citations"]}
+    return {
+        "project_id": str(project_id),
+        "markdown": result["answer"],
+        "citations": result["citations"],
+        "generated_at": generated_at,
+        "cached": False,
+    }
 
 
 @router.post("/reingest/{meeting_id}", status_code=202)

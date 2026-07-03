@@ -162,44 +162,78 @@ class MemoryService:
 
     @staticmethod
     def _shape_results(results: Any) -> dict:
-        """Normalize cognee SearchResult list → {answer, citations, raw}."""
-        answer_parts: list[str] = []
-        citations: list[str] = []
-        raw: list[Any] = []
-        flat: list[Any] = []
-        for r in results or []:
-            # cognee sometimes returns a stringified Python list — unwrap it
-            if isinstance(r, str) and r.startswith("[") and r.endswith("]"):
-                import ast
+        """Normalize cognee search output → {answer, citations, raw}.
 
-                try:
-                    r = ast.literal_eval(r)
-                except (ValueError, SyntaxError):
-                    pass
-            if isinstance(r, list):
-                flat.extend(r)
+        Observed shape (1.2.2, multi-user mode): a list of per-dataset dicts
+        {dataset_id, dataset_name, search_result: [str, ...]} where each string
+        may carry an "Evidence:" block when include_references is on.
+        """
+        answer_parts: list[str] = []
+        citations: list[dict] = []
+        raw: list[str] = []
+
+        texts: list[str] = []
+        for r in results or []:
+            if isinstance(r, dict):
+                sr = r.get("search_result") or r.get("text") or r.get("answer")
+                if isinstance(sr, (list, tuple)):
+                    texts.extend(str(x) for x in sr)
+                elif sr is not None:
+                    texts.append(str(sr))
+                else:
+                    texts.append(str(r))
+            elif isinstance(r, (list, tuple)):
+                texts.extend(str(x) for x in r)
             else:
-                flat.append(r)
-        for r in flat:
-            raw.append(str(r))
-            if isinstance(r, str):
-                text = r
-            elif isinstance(r, dict):
-                text = str(r.get("text") or r.get("answer") or r.get("search_result") or r)
-                for ref in r.get("references") or r.get("citations") or []:
-                    citations.append(str(ref))
-            else:
-                text = str(r)
-            # cognee appends an "Evidence:" block when include_references is on
+                texts.append(str(r))
+
+        for text in texts:
+            raw.append(text)
             if "Evidence:" in text:
                 answer, _, evidence = text.partition("Evidence:")
                 answer_parts.append(answer.strip())
-                citations.extend(
-                    line.strip(" -•") for line in evidence.strip().splitlines() if line.strip()
-                )
+                citations.extend(_parse_citations(evidence))
             else:
-                answer_parts.append(text)
+                answer_parts.append(text.strip())
+
         return {"answer": "\n\n".join(p for p in answer_parts if p), "citations": citations, "raw": raw}
+
+
+def _parse_citations(evidence: str) -> list[dict]:
+    """Turn cognee's Evidence block into UI-friendly citations.
+
+    Raw shape per item:
+      - chunk 1 of document text_<hash> (data_id: ..., chunk_id: ...): "[source:
+        meeting] [project: X] ... Meeting: <title> [00:02] Alice: ..."
+    We surface the human part (meeting title + snippet) and keep the ids as a
+    compact ref for debugging.
+    """
+    import re
+
+    out: list[dict] = []
+    # Items start with "- chunk"; the block may arrive as one long line.
+    for item in re.split(r"\n- |\A- ", evidence.strip()):
+        item = item.strip().strip("-• ")
+        if not item:
+            continue
+        m = re.match(r'(?s)(chunk \d+) of document \S+ \(([^)]*)\):\s*"(.*)"?\s*$', item)
+        if m:
+            snippet = m.group(3).strip().strip('"')
+            title_m = re.search(r"Meeting: (.+?) \[", snippet)
+            date_m = re.search(r"\[date: ([0-9-]+)\]", snippet)
+            # drop the doc-header tags from the preview; keep the speech
+            speech = re.sub(r"^\[source:.*?\]\s*Meeting: .*?(?=\[\d)", "", snippet).strip()
+            out.append(
+                {
+                    "source": (title_m.group(1) if title_m else "meeting"),
+                    "date": date_m.group(1) if date_m else None,
+                    "snippet": (speech or snippet)[:280],
+                    "ref": m.group(1),
+                }
+            )
+        else:
+            out.append({"source": None, "date": None, "snippet": item[:280], "ref": None})
+    return out
 
 
 # process-wide singleton (async-safe: worst case is a duplicate user lookup)

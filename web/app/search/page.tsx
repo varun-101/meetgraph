@@ -2,10 +2,11 @@
 
 /** Ask the org memory (P3/P4): cited Q&A over allowed datasets only. */
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import Shell, { useMe } from "@/components/shell";
 import { Button, Card, ErrorBanner, Input } from "@/components/ui";
 import { searchMemory } from "@/lib/api";
-import type { SearchResponse } from "@/lib/types";
+import type { Citation, SearchResponse } from "@/lib/types";
 
 export default function SearchPage() {
   return (
@@ -88,23 +89,24 @@ function Search() {
       {result && (
         <div className="space-y-4">
           <Card className="p-5">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-dim">
-              {result.answer || "No answer found in the current scope."}
-            </p>
+            {result.answer ? (
+              <div className="markdown text-sm">
+                <ReactMarkdown>{result.answer}</ReactMarkdown>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">
+                No answer found in the current scope.
+              </p>
+            )}
           </Card>
           {result.citations.length > 0 && (
             <div>
               <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-faint">
-                Citations
+                Sources
               </h2>
               <ul className="space-y-1.5">
                 {result.citations.map((c, i) => (
-                  <li
-                    key={i}
-                    className="rounded-md border border-edge bg-raised px-3 py-2 font-mono text-xs text-muted"
-                  >
-                    {typeof c === "string" ? c : JSON.stringify(c)}
-                  </li>
+                  <CitationCard key={i} citation={c} />
                 ))}
               </ul>
             </div>
@@ -112,5 +114,34 @@ function Search() {
         </div>
       )}
     </div>
+  );
+}
+
+function CitationCard({ citation }: { citation: Citation | string }) {
+  if (typeof citation === "string") {
+    return (
+      <li className="rounded-md border border-edge bg-raised px-3.5 py-2.5 text-xs text-muted">
+        {citation}
+      </li>
+    );
+  }
+  return (
+    <li className="rounded-md border border-edge bg-raised px-3.5 py-2.5">
+      <div className="flex items-baseline gap-2">
+        <span className="text-xs font-medium text-info">
+          {citation.source ?? "meeting"}
+        </span>
+        {citation.date && (
+          <span className="font-mono text-[10px] text-faint">
+            {citation.date}
+          </span>
+        )}
+      </div>
+      {citation.snippet && (
+        <p className="mt-1 text-xs leading-relaxed text-muted">
+          &ldquo;{citation.snippet}&rdquo;
+        </p>
+      )}
+    </li>
   );
 }

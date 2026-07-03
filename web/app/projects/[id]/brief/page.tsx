@@ -19,11 +19,15 @@ export default function BriefPage() {
 function Brief() {
   const { id } = useParams<{ id: string }>();
   const [markdown, setMarkdown] = useState<string | null>(null);
+  const [meta, setMeta] = useState<{ cached?: boolean; generated_at?: string }>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getBrief(id)
-      .then((b) => setMarkdown(b.markdown))
+      .then((b) => {
+        setMarkdown(b.markdown);
+        setMeta({ cached: b.cached, generated_at: b.generated_at });
+      })
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Brief unavailable"),
       );
@@ -37,6 +41,12 @@ function Brief() {
       <p className="mb-6 text-sm text-muted">
         Recent decisions, open action items, and active topics — generated
         from this project&apos;s meeting memory.
+        {meta.generated_at && (
+          <span className="ml-2 font-mono text-[11px] text-faint">
+            {meta.cached ? "cached · " : "fresh · "}
+            {new Date(meta.generated_at).toLocaleString()}
+          </span>
+        )}
       </p>
       {error ? (
         <ErrorBanner message={error} />
