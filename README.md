@@ -101,6 +101,9 @@ cd web; npm install; npm run dev
 
 ## Demo walkthrough
 
+> 🎬 Recording the demo? The full scene-by-scene video script and the
+> **how-we-use-cognee** technical walkthrough live in [docs/DEMO.md](docs/DEMO.md).
+
 1. Sign in at `http://localhost:3000` as `manager@acme.test` / `password123`.
 2. Create a meeting in **Apollo**, join it from two browser tabs, talk about
    a decision ("let's move the launch to the 17th"), assign someone a task.
