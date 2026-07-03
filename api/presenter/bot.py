@@ -34,17 +34,23 @@ SLIDE_PAUSE_S = 2.0
 COMMAND_QUEUE_MAX = 4
 
 INTENT_SYSTEM = """You route a spoken/typed command for a presenter bot that can
-show slides AND browse the live product UI. Return STRICT JSON:
-{"action": "next"|"prev"|"goto"|"answer"|"browse",
+show slides, browse the live product UI, and manage action items. Return STRICT JSON:
+{"action": "next"|"prev"|"goto"|"answer"|"browse"|"update_action"|"create_action",
  "slide_index": int|null, "query": str|null,
- "target": "actions"|"brief"|"transcript"|"dashboard"|"deck"|null}.
-- "browse" when asked to open/show a live app surface: the action tracker
-  (target=actions), project brief page (brief), a meeting transcript
-  (transcript), the dashboard (dashboard), or to return to the slides (deck).
-- "goto" when the command asks for an existing SLIDE; pick slide_index from
-  the numbered slide titles provided.
-- "answer" when it asks a question; put the question in `query`.
-- "next"/"prev" for slide navigation. When unsure, prefer "answer"."""
+ "target": "actions"|"brief"|"transcript"|"dashboard"|"deck"|null,
+ "item": str|null, "status": "open"|"in_progress"|"done"|null,
+ "owner_name": str|null, "deadline": str|null, "text": str|null}.
+- "update_action" when asked to change an existing action item (mark done,
+  reassign, change deadline): `item` = words identifying which item; set only
+  the fields being changed. `deadline` must be ISO-8601 (convert relative dates).
+- "create_action" when asked to add a new action item/task: `text` = the task,
+  plus owner_name/deadline if stated.
+- "browse" when asked to open/show a live app surface: action tracker
+  (target=actions), brief page (brief), a meeting transcript (transcript),
+  the dashboard, or to return to the slides (deck).
+- "goto" for an existing SLIDE by its numbered title. "answer" for questions
+  (put the question in `query`). "next"/"prev" for slide navigation.
+When unsure, prefer "answer"."""
 
 
 @dataclass
@@ -283,6 +289,15 @@ async def _handle_command(
             return idx
         return None
 
+    if action in ("update_action", "create_action"):
+        said = await _handle_action_write(session, project, org_id, user_id, intent)
+        if session.mode == "actions":
+            with contextlib.suppress(Exception):
+                await page.reload(wait_until="networkidle")  # room sees the row change
+        session._interrupt.clear()
+        await _speak(audio_source, await synth(said), session)
+        return None
+
     if action == "browse":
         target = intent.get("target") or "dashboard"
         if target == "deck":
@@ -373,6 +388,126 @@ async def _browse(session, page, target, project, user_id, audio_source, synth) 
     # stay on this page until the next command
 
 
+def match_action_item(items: list[tuple[str, str]], phrase: str) -> tuple[str | None, int]:
+    """Pick the action item best matching `phrase` by word overlap.
+    items = [(id, text)]. Returns (id | None, n_candidates_at_best_score).
+    None when nothing overlaps; ambiguity reported via the count."""
+    words = {w for w in phrase.lower().replace("?", "").split() if len(w) > 2}
+    if not words:
+        return None, 0
+    scored: list[tuple[int, str]] = []
+    for item_id, text in items:
+        overlap = len(words & {w for w in text.lower().split() if len(w) > 2})
+        if overlap > 0:
+            scored.append((overlap, item_id))
+    if not scored:
+        return None, 0
+    scored.sort(reverse=True)
+    best = scored[0][0]
+    ties = [item_id for s, item_id in scored if s == best]
+    return (ties[0] if len(ties) == 1 else None), len(ties)
+
+
+async def _handle_action_write(session, project, org_id, user_id, intent) -> str:
+    """Apply an action-item write AS THE COMMANDING USER (same rules as the
+    PATCH endpoint: managers edit anything, members only their own items).
+    Returns the sentence the bot should say."""
+    from sqlalchemy import select
+
+    from api.db import async_session_maker
+    from api.memory.pipeline import _parse_deadline, sync_action_status
+    from api.models import ActionItem, ProjectMember, User
+    from api.rbac.guards import get_project_role
+    from api.rbac.resolver import is_org_admin
+
+    async with async_session_maker() as db:
+        role = await get_project_role(db, user_id, project.id)
+        is_admin = await is_org_admin(db, user_id, org_id)
+        is_manager = role == "manager" or is_admin
+
+        async def resolve_owner(name: str | None) -> User | None:
+            if not name:
+                return None
+            members = (
+                await db.execute(
+                    select(User)
+                    .join(ProjectMember, ProjectMember.user_id == User.id)
+                    .where(ProjectMember.project_id == project.id)
+                )
+            ).scalars().all()
+            name_l = name.strip().lower()
+            for u in members:
+                full = (u.name or u.email).lower()
+                if name_l == full or name_l in full.split():
+                    return u
+            return None
+
+        if intent["action"] == "create_action":
+            if not is_manager:
+                return "Only a project manager can create action items, sorry."
+            text = (intent.get("text") or "").strip()
+            if not text:
+                return "I didn't catch what the new action item should say."
+            owner = await resolve_owner(intent.get("owner_name"))
+            item = ActionItem(
+                meeting_id=session.meeting_id,
+                project_id=project.id,
+                text=text,
+                owner_user_id=owner.id if owner else None,
+                deadline=_parse_deadline(intent.get("deadline")),
+                status="open",
+            )
+            db.add(item)
+            await db.commit()
+            asyncio.get_running_loop().create_task(sync_action_status(item.id))
+            said = f"Added: {text}."
+            if owner:
+                said += f" Assigned to {owner.name or owner.email}."
+            return said
+
+        # update_action
+        items = (
+            await db.execute(
+                select(ActionItem).where(ActionItem.project_id == project.id)
+            )
+        ).scalars().all()
+        matched_id, candidates = match_action_item(
+            [(str(a.id), a.text) for a in items], intent.get("item") or ""
+        )
+        if matched_id is None:
+            if candidates > 1:
+                return (
+                    f"That matches {candidates} different action items — "
+                    "can you be more specific?"
+                )
+            return "I couldn't find an action item matching that."
+        action = next(a for a in items if str(a.id) == matched_id)
+
+        if not is_manager and action.owner_user_id != user_id:
+            return "You can only update your own action items — a manager can change the rest."
+
+        changes: list[str] = []
+        status = intent.get("status")
+        if status in ("open", "in_progress", "done"):
+            action.status = status
+            changes.append(f"status {status.replace('_', ' ')}")
+        owner = await resolve_owner(intent.get("owner_name"))
+        if intent.get("owner_name") and owner is None:
+            return f"I couldn't find a project member named {intent['owner_name']}."
+        if owner is not None:
+            action.owner_user_id = owner.id
+            changes.append(f"owner {owner.name or owner.email}")
+        deadline = _parse_deadline(intent.get("deadline"))
+        if deadline is not None:
+            action.deadline = deadline
+            changes.append(f"deadline {deadline.date().isoformat()}")
+        if not changes:
+            return "I understood which item you mean, but not what to change."
+        await db.commit()
+        asyncio.get_running_loop().create_task(sync_action_status(action.id))
+        return f"Done — {action.text[:80]}: {', '.join(changes)}."
+
+
 async def _mint_app_token(user_id: uuid.UUID) -> str:
     """Short-lived app JWT for the commanding user — the bot's browser sees
     exactly what that user is allowed to see (RBAC holds in browse mode)."""
@@ -405,7 +540,9 @@ async def _resolve_intent(text: str, slide_titles: list[str]) -> dict:
                 temperature=0.0,
             )
             data = json.loads(resp.choices[0].message.content or "{}")
-            if data.get("action") in ("next", "prev", "goto", "answer"):
+            if data.get("action") in (
+                "next", "prev", "goto", "answer", "browse", "update_action", "create_action"
+            ):
                 return data
         except Exception:
             log.exception("intent resolution failed — falling back to heuristics")
@@ -421,14 +558,40 @@ BROWSE_KEYWORDS = {
 }
 
 
+_STATUS_WORDS = {
+    "done": "done", "complete": "done", "completed": "done", "finished": "done",
+    "in progress": "in_progress", "in-progress": "in_progress", "started": "in_progress",
+    "open": "open", "reopen": "open", "reopened": "open",
+}
+
+
 def parse_intent_fallback(text: str, slide_titles: list[str]) -> dict:
-    """No-LLM intent routing: nav keywords → nav; browse keywords → app tour;
-    title word overlap → goto; otherwise treat as a memory question."""
+    """No-LLM intent routing: writes ("mark X as done", "add action item: Y"),
+    nav keywords, browse keywords, title overlap → goto, else memory question."""
     t = text.lower().strip()
     if t in ("next", "next slide", "forward", "continue"):
         return {"action": "next", "slide_index": None, "query": None}
     if t in ("back", "prev", "previous", "go back", "previous slide"):
         return {"action": "prev", "slide_index": None, "query": None}
+
+    # writes — match on the ORIGINAL text so names/tasks keep their casing
+    import re
+
+    src = text.strip()
+    m = re.match(r"(?:mark|set)\s+(?:the\s+)?(.+?)\s+(?:as|to)\s+(.+)$", src, re.IGNORECASE)
+    if m:
+        status = _STATUS_WORDS.get(m.group(2).strip().rstrip(".").lower())
+        if status:
+            return {"action": "update_action", "item": m.group(1).strip(), "status": status}
+    m = re.match(r"assign\s+(.+?)\s+to\s+(.+)$", src, re.IGNORECASE)
+    if m:
+        return {"action": "update_action", "item": m.group(1).strip(),
+                "owner_name": m.group(2).strip().rstrip(".")}
+    m = re.match(
+        r"(?:add|create)\s+(?:an?\s+)?(?:action(?:\s+item)?|task)[:\s]+(.+)$", src, re.IGNORECASE
+    )
+    if m:
+        return {"action": "create_action", "text": m.group(1).strip()}
     # browse only reads as a command with a show/open verb (or a bare target) —
     # "what did we decide in the last meeting?" must stay a memory question
     is_showish = any(v in t for v in ("show", "open", "go to", "display", "pull up")) or len(t) <= 12
