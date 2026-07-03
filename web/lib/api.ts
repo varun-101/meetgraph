@@ -163,6 +163,33 @@ export const patchAction = (id: string, status: string) =>
     body: JSON.stringify({ status }),
   });
 
+/* ---------- presenter ---------- */
+
+export interface PresenterStatus {
+  status: "none" | "preparing" | "live" | "stopped";
+  current_slide?: number;
+  slide_count?: number;
+  error?: string | null;
+}
+
+export const startPresenter = (meetingId: string) =>
+  apiFetch<{ status: string }>(`/meetings/${meetingId}/presenter`, {
+    method: "POST",
+  });
+
+export const getPresenterStatus = (meetingId: string) =>
+  apiFetch<PresenterStatus>(`/meetings/${meetingId}/presenter`);
+
+export const nextPresenterSlide = (meetingId: string) =>
+  apiFetch<{ ok: boolean }>(`/meetings/${meetingId}/presenter/next`, {
+    method: "POST",
+  });
+
+export const stopPresenter = (meetingId: string) =>
+  apiFetch<{ status: string }>(`/meetings/${meetingId}/presenter`, {
+    method: "DELETE",
+  });
+
 /* ---------- memory ---------- */
 
 export const searchMemory = (req: SearchRequest) =>

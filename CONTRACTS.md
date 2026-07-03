@@ -63,7 +63,16 @@ datasets from it; the user never supplies a dataset name.
 
 Each router module MUST expose a module-level `router = APIRouter(...)`:
 `api.auth.router`, `api.rbac.router` (admin+audit endpoints), `api.meetings.router`,
-`api.memory.router`.
+`api.memory.router`, `api.presenter.router`.
+
+## Presenter bot (api/presenter/)
+
+Visible LiveKit participant (identity `presenter-bot`) that screenshares a
+memory-generated deck and narrates via edge-tts. Endpoints:
+`POST/GET/DELETE /meetings/{id}/presenter`, `POST .../presenter/next` (manager+).
+Invariant shared with the recorder: bots (`recorder-bot`, `presenter-bot`)
+never count toward room occupancy — both self-stop when the last HUMAN leaves,
+then the recorder deletes the room so room_finished fires.
 
 ## HTTP API surface consumed by web
 

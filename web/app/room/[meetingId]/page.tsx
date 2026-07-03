@@ -9,9 +9,16 @@ import {
   VideoConference,
 } from "@livekit/components-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Button, ErrorBanner, Spinner } from "@/components/ui";
-import { getMeetingToken } from "@/lib/api";
+import {
+  getMeetingToken,
+  getPresenterStatus,
+  nextPresenterSlide,
+  startPresenter,
+  stopPresenter,
+  type PresenterStatus,
+} from "@/lib/api";
 
 export default function RoomPage() {
   return (
@@ -69,7 +76,95 @@ function Room() {
       >
         <VideoConference />
         <RoomAudioRenderer />
+        {!guestToken && <PresenterBar meetingId={meetingId} />}
       </LiveKitRoom>
+    </div>
+  );
+}
+
+/** Floating host controls for the memory-backed presenter bot. Visible to all
+ *  members; the API 403s non-managers. */
+function PresenterBar({ meetingId }: { meetingId: string }) {
+  const [status, setStatus] = useState<PresenterStatus>({ status: "none" });
+  const [note, setNote] = useState<string | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const s = await getPresenterStatus(meetingId);
+        if (alive) setStatus(s);
+      } catch {
+        /* room may not be registered yet — keep last state */
+      }
+    };
+    void poll();
+    const iv = setInterval(poll, 3000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [meetingId]);
+
+  const flash = (msg: string) => {
+    setNote(msg);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setNote(null), 4000);
+  };
+
+  const call = async (fn: () => Promise<unknown>, optimistic?: PresenterStatus) => {
+    try {
+      await fn();
+      if (optimistic) setStatus(optimistic);
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Request failed");
+    }
+  };
+
+  const busy = status.status === "preparing";
+  const live = status.status === "live";
+
+  return (
+    <div className="pointer-events-auto fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-edge-strong bg-surface/95 px-3 py-2 shadow-xl backdrop-blur">
+      {note && <span className="px-1 text-xs text-danger">{note}</span>}
+      {!live && !busy && (
+        <button
+          onClick={() =>
+            call(() => startPresenter(meetingId), { status: "preparing" })
+          }
+          className="rounded-full bg-accent px-3.5 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent-dim"
+        >
+          Present from memory
+        </button>
+      )}
+      {busy && (
+        <span className="flex items-center gap-2 px-2 text-xs text-warn">
+          <span className="size-3 animate-spin rounded-full border-2 border-edge-strong border-t-warn" />
+          Preparing deck…
+        </span>
+      )}
+      {live && (
+        <>
+          <span className="px-1.5 font-mono text-[11px] text-accent">
+            slide {(status.current_slide ?? 0) + 1}/{status.slide_count ?? "?"}
+          </span>
+          <button
+            onClick={() => call(() => nextPresenterSlide(meetingId))}
+            className="rounded-full border border-edge-strong px-3 py-1.5 text-xs text-ink-dim hover:bg-hover"
+          >
+            Next slide
+          </button>
+          <button
+            onClick={() =>
+              call(() => stopPresenter(meetingId), { status: "stopped" })
+            }
+            className="rounded-full border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/10"
+          >
+            Stop
+          </button>
+        </>
+      )}
     </div>
   );
 }

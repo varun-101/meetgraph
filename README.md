@@ -20,6 +20,7 @@ copy .env.template .env    # fill LLM_API_KEY (DeepSeek), DB credentials
 # 3. API + workers
 python -m venv .venv
 .venv\Scripts\pip install -r api\requirements.txt
+.venv\Scripts\python -m playwright install chromium   # presenter bot browser (once)
 .venv\Scripts\alembic upgrade head
 .venv\Scripts\uvicorn api.main:app --reload --port 8000
 

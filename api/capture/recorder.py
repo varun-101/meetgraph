@@ -28,6 +28,10 @@ log = logging.getLogger(__name__)
 SAMPLE_RATE = 48_000
 NUM_CHANNELS = 1
 
+# Bots never count toward room occupancy — a visible bot (presenter) must not
+# keep the room alive after the humans leave (the original stuck-live bug).
+BOT_IDENTITIES = {"recorder-bot", "presenter-bot"}
+
 
 async def start_recorder(meeting_id: uuid.UUID, room_name: str) -> None:
     """Connect the bot, record all remote audio tracks, return when the room closes."""
@@ -66,7 +70,11 @@ async def start_recorder(meeting_id: uuid.UUID, room_name: str) -> None:
 
     @room.on("participant_disconnected")
     def on_participant_disconnected(*_args) -> None:
-        if not room.remote_participants:
+        humans = [
+            p for p in room.remote_participants.values()
+            if p.identity not in BOT_IDENTITIES
+        ]
+        if not humans:
             closed.set()  # last human left — finalize now, don't wait for timeout
 
     @room.on("disconnected")
@@ -114,7 +122,7 @@ async def _record_track(
 ) -> None:
     """Record one participant's audio track to WAV; one failure never kills others."""
     if identity == "recorder-bot":
-        return
+        return  # never record ourselves; presenter-bot IS recorded (meeting content)
     path = out_dir / f"{_safe(identity)}.wav"
     frames_written = 0
     stream = rtc.AudioStream.from_track(

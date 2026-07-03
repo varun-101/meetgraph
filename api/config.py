@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     stt_compute_type: str = "int8"
     stt_device: str = "cpu"
 
+    # Presenter bot
+    tts_voice: str = "en-US-AriaNeural"
+    presenter_fps: int = 5
+
     # LLM (DeepSeek, OpenAI-compatible) — also read directly by cognee from env
     llm_provider: str = "custom"
     llm_model: str = "deepseek/deepseek-chat"

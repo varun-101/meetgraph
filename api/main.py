@@ -34,12 +34,14 @@ from api.rbac.router import router as rbac_router          # noqa: E402
 from api.meetings.router import router as meetings_router  # noqa: E402
 from api.meetings.webhooks import router as webhooks_router  # noqa: E402
 from api.memory.router import router as memory_router      # noqa: E402
+from api.presenter.router import router as presenter_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(rbac_router)
 app.include_router(meetings_router)
 app.include_router(webhooks_router)
 app.include_router(memory_router)
+app.include_router(presenter_router)
 
 
 @app.get("/health")

@@ -26,6 +26,11 @@ faster-whisper==1.2.1
 soundfile
 numpy
 
+# Presenter bot (one-time: python -m playwright install chromium)
+playwright
+edge-tts
+pillow
+
 # Memory — §8: pin cognee, upgrade deliberately in a branch with isolation tests green.
 # postgres-binary extra (psycopg2-binary — [postgres] compiles from source on Windows);
 # fastembed extra for local embeddings (not in base install).
