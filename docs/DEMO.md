@@ -1,9 +1,11 @@
 # meetgraph — demo video script & cognee walkthrough
 
-> 🎞️ A ready-made 37s animated intro lives at
-> [intro/meetgraph-intro.webm](intro/meetgraph-intro.webm) (rendered from
-> [intro/intro.html](intro/intro.html) — open it in a browser to replay or
-> re-record at any resolution). Use it as the cold open before the live demo.
+> 🎞️ A ready-made 37s animated intro (multi-voice narration + sound design)
+> lives at [intro/meetgraph-intro-4k.webm](intro/meetgraph-intro-4k.webm)
+> (3840×2160; a 720p cut is next to it). Rendered from
+> [intro/intro.html](intro/intro.html) — open with `?scale=3` to replay at 4K,
+> re-record via `record_4k.py`, rebuild audio via `build_audio.py`.
+> Use it as the cold open before the live demo.
 
 Target length: **5–6 minutes**. Every scene lists what's on screen, what you
 say (verbatim, edit freely), and rough timing. Total speaking pace ~140 wpm.

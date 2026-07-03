@@ -7,18 +7,20 @@
 """
 import asyncio
 import io
+import sys
 from pathlib import Path
 
 import numpy as np
 
 REPO = Path(r"d:\codes\cognee_hackathon\meetgraph")
-VIDEO_IN = REPO / "docs" / "intro" / "meetgraph-intro.webm"
-VIDEO_OUT = REPO / "docs" / "intro" / "meetgraph-intro-sound.webm"
+# usage: build_intro_audio.py [video_in] [video_out] [css_clock_offset_s]
+VIDEO_IN = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "docs" / "intro" / "meetgraph-intro.webm"
+VIDEO_OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else REPO / "docs" / "intro" / "meetgraph-intro-sound.webm"
 SR = 48_000
 DUR = 37.5  # slightly past the 37s video — players hold the end card
-# Measured from the recording: first painted frame lands at t=0.12s, so the
-# page's CSS animation clock runs 120ms behind the video clock.
-OFFSET = 0.12
+# CSS-animation-clock vs video-clock offset, measured per recording from the
+# first painted frame (720p recording had a 0.12s white lead-in; 4K had none).
+OFFSET = float(sys.argv[3]) if len(sys.argv) > 3 else 0.12
 
 NARRATOR = "en-GB-SoniaNeural"
 MIA = "en-US-JennyNeural"

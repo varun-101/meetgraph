@@ -189,6 +189,13 @@
 </style>
 </head>
 <body>
+<script>
+  /* render at N× for high-res recording: intro.html?scale=3 → 3840×2160 */
+  (function () {
+    var s = new URLSearchParams(location.search).get("scale");
+    if (s) document.documentElement.style.zoom = s;
+  })();
+</script>
 <div id="stage">
 
   <!-- S1: title -->
