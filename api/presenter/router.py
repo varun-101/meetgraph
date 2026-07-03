@@ -57,6 +57,7 @@ async def presenter_status(
         "status": s.status,
         "current_slide": s.current_slide,
         "slide_count": s.slide_count,
+        "handling_command": s.handling_command,
         "error": s.error,
     }
 
@@ -70,6 +71,33 @@ async def advance(
     await _live_meeting(session, user, meeting_id)
     try:
         bot.next_slide(meeting_id)
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return {"ok": True}
+
+
+from pydantic import BaseModel, Field
+
+
+class CommandIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+@router.post("/meetings/{meeting_id}/presenter/command")
+async def command(
+    meeting_id: uuid.UUID,
+    body: CommandIn,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Direct the presenter (V1): navigation or a memory question that becomes
+    a new cited slide. Members may command; only managers stop (DELETE)."""
+    meeting = await session.get(Meeting, meeting_id)
+    if meeting is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "meeting not found")
+    await ensure_project_access(session, user, meeting.project_id, min_role="member")
+    try:
+        bot.submit_command(meeting_id, user.id, body.text)
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return {"ok": True}

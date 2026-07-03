@@ -169,8 +169,15 @@ export interface PresenterStatus {
   status: "none" | "preparing" | "live" | "stopped";
   current_slide?: number;
   slide_count?: number;
+  handling_command?: boolean;
   error?: string | null;
 }
+
+export const commandPresenter = (meetingId: string, text: string) =>
+  apiFetch<{ ok: boolean }>(`/meetings/${meetingId}/presenter/command`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
 
 export const startPresenter = (meetingId: string) =>
   apiFetch<{ status: string }>(`/meetings/${meetingId}/presenter`, {

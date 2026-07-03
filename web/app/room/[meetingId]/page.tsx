@@ -12,6 +12,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Button, ErrorBanner, Spinner } from "@/components/ui";
 import {
+  commandPresenter,
   getMeetingToken,
   getPresenterStatus,
   nextPresenterSlide,
@@ -87,6 +88,7 @@ function Room() {
 function PresenterBar({ meetingId }: { meetingId: string }) {
   const [status, setStatus] = useState<PresenterStatus>({ status: "none" });
   const [note, setNote] = useState<string | null>(null);
+  const [ask, setAsk] = useState("");
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -154,11 +156,35 @@ function PresenterBar({ meetingId }: { meetingId: string }) {
           <span className="px-1.5 font-mono text-[11px] text-accent">
             slide {(status.current_slide ?? 0) + 1}/{status.slide_count ?? "?"}
           </span>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const text = ask.trim();
+              if (!text) return;
+              setAsk("");
+              void call(() => commandPresenter(meetingId, text));
+            }}
+          >
+            <input
+              value={ask}
+              onChange={(e) => setAsk(e.target.value)}
+              placeholder={
+                status.handling_command
+                  ? "Presenter is thinking…"
+                  : "Ask the presenter…"
+              }
+              disabled={status.handling_command}
+              className="w-52 rounded-full border border-edge bg-raised px-3 py-1.5 text-xs text-ink placeholder:text-faint focus:border-accent-dim focus:outline-none disabled:opacity-60"
+            />
+          </form>
+          {status.handling_command && (
+            <span className="size-3 animate-spin rounded-full border-2 border-edge-strong border-t-accent" />
+          )}
           <button
             onClick={() => call(() => nextPresenterSlide(meetingId))}
             className="rounded-full border border-edge-strong px-3 py-1.5 text-xs text-ink-dim hover:bg-hover"
           >
-            Next slide
+            Next
           </button>
           <button
             onClick={() =>
