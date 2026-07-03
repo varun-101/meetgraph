@@ -86,7 +86,9 @@ def render_deck(deck: DeckSpec, meeting_id: uuid.UUID) -> Path:
         "</script></body></html>"
     )
 
-    out_dir = Path(settings.recordings_dir) / "decks"
+    # resolve(): recordings_dir may be relative, and Path.as_uri() (used for
+    # the browser's file:// URL) requires an absolute path
+    out_dir = (Path(settings.recordings_dir) / "decks").resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{meeting_id}.html"
     path.write_text(doc, encoding="utf-8")

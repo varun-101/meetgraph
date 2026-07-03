@@ -128,6 +128,11 @@ function PresenterBar({ meetingId }: { meetingId: string }) {
   return (
     <div className="pointer-events-auto fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-edge-strong bg-surface/95 px-3 py-2 shadow-xl backdrop-blur">
       {note && <span className="px-1 text-xs text-danger">{note}</span>}
+      {status.status === "stopped" && status.error && !note && (
+        <span className="max-w-64 truncate px-1 text-xs text-danger" title={status.error}>
+          presenter failed: {status.error}
+        </span>
+      )}
       {!live && !busy && (
         <button
           onClick={() =>
