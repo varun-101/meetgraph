@@ -50,6 +50,8 @@ async def ingest_meeting(meeting_id: uuid.UUID) -> None:
             + f"\nMeeting: {meeting.title}\n\n"
             + transcript.canonical_text
         )
+        await _record_doc_mapping(session, doc, meeting_id)
+        await session.commit()
 
     # 1) add + 2) cognify — one cognify per meeting (§6 P3)
     await memory_service.add(org_id, dataset, doc)
@@ -102,6 +104,8 @@ async def sync_action_status(action_id: uuid.UUID) -> None:
             doc_header(project.name, [], datetime.now(timezone.utc).date().isoformat())
             + f'\nAction item status update: "{action.text}" is now {action.status}.'
         )
+        await _record_doc_mapping(session, doc, action.meeting_id)
+        await session.commit()
     try:
         await memory_service.add(org_id, dataset, doc)
         async with async_session_maker() as session:
@@ -109,6 +113,23 @@ async def sync_action_status(action_id: uuid.UUID) -> None:
             await session.commit()
     except Exception:
         log.exception("action status sync failed for %s", action_id)
+
+
+async def _record_doc_mapping(session, doc: str, meeting_id: uuid.UUID) -> None:
+    """cognee names ingested text docs `text_<md5(content)>` (verified against
+    its loaders). Recording the hash → meeting mapping at ingest time is what
+    makes citations clickable: Evidence blocks name the doc, we resolve the
+    meeting. Stored in sync_state (caller commits)."""
+    import hashlib
+
+    from api.models import SyncState
+
+    key = f"docmap:text_{hashlib.md5(doc.encode('utf-8')).hexdigest()}"
+    existing = await session.get(SyncState, key)
+    if existing is None:
+        session.add(SyncState(key=key, value=str(meeting_id)))
+    else:
+        existing.value = str(meeting_id)
 
 
 async def _users_by_name(session, names: list[str]) -> dict[str, User]:

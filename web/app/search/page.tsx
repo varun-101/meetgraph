@@ -1,6 +1,7 @@
 "use client";
 
 /** Ask the org memory (P3/P4): cited Q&A over allowed datasets only. */
+import Link from "next/link";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import Shell, { useMe } from "@/components/shell";
@@ -125,12 +126,27 @@ function CitationCard({ citation }: { citation: Citation | string }) {
       </li>
     );
   }
+  const title = (
+    <span className="text-xs font-medium text-info">
+      {citation.source ?? "meeting"}
+    </span>
+  );
   return (
-    <li className="rounded-md border border-edge bg-raised px-3.5 py-2.5">
+    <li className="rounded-md border border-edge bg-raised px-3.5 py-2.5 transition-colors hover:border-edge-strong">
       <div className="flex items-baseline gap-2">
-        <span className="text-xs font-medium text-info">
-          {citation.source ?? "meeting"}
-        </span>
+        {citation.meeting_id ? (
+          <Link
+            href={`/meetings/${citation.meeting_id}`}
+            className="group inline-flex items-baseline gap-1 hover:underline"
+          >
+            {title}
+            <span className="text-[10px] text-faint group-hover:text-info">
+              → transcript
+            </span>
+          </Link>
+        ) : (
+          title
+        )}
         {citation.date && (
           <span className="font-mono text-[10px] text-faint">
             {citation.date}

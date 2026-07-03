@@ -112,7 +112,15 @@ class MemoryService:
         from api.memory.ontology import build_graph_model
 
         user = await self._get_org_user(org_id)
-        await cognee.cognify(datasets=datasets, user=user, graph_model=build_graph_model())
+        # temporal_cognify: meetings are inherently temporal — decisions
+        # supersede each other; time-aware graph lets TEMPORAL search prefer
+        # the latest state ("what did we decide last week?").
+        await cognee.cognify(
+            datasets=datasets,
+            user=user,
+            graph_model=build_graph_model(),
+            temporal_cognify=True,
+        )
 
     async def search(
         self,
@@ -126,16 +134,32 @@ class MemoryService:
         from allowed_datasets(); an empty list is refused here as a backstop."""
         if not datasets:
             return {"answer": "", "citations": [], "raw": []}
-        import cognee
-        from cognee import SearchType
         from cognee.modules.data.exceptions.exceptions import DatasetNotFoundError
 
         user = await self._get_org_user(org_id)
+
+        # Time-flavored questions route to TEMPORAL first (data is cognified
+        # with temporal_cognify); fall back to the requested type if empty.
+        tried_temporal = False
         try:
-            return await self._search_inner(user, datasets, query, search_type, top_k)
+            if search_type == "GRAPH_COMPLETION" and wants_temporal(query):
+                tried_temporal = True
+                result = await self._search_inner(user, datasets, query, "TEMPORAL", top_k)
+                if result["answer"].strip():
+                    return await _enrich_citations(result)
+            result = await self._search_inner(user, datasets, query, search_type, top_k)
+            return await _enrich_citations(result)
         except DatasetNotFoundError:
             # Project exists but nothing ingested yet — empty memory, not an error.
             return {"answer": "", "citations": [], "raw": []}
+        except Exception:
+            if not tried_temporal:
+                raise
+            # TEMPORAL can fail on datasets ingested before the temporal flag —
+            # degrade to the plain graph search rather than erroring.
+            log.exception("TEMPORAL search failed — retrying with %s", search_type)
+            result = await self._search_inner(user, datasets, query, search_type, top_k)
+            return await _enrich_citations(result)
 
     async def _search_inner(self, user, datasets, query, search_type, top_k) -> dict:
         import cognee
@@ -216,9 +240,9 @@ def _parse_citations(evidence: str) -> list[dict]:
         item = item.strip().strip("-• ")
         if not item:
             continue
-        m = re.match(r'(?s)(chunk \d+) of document \S+ \(([^)]*)\):\s*"(.*)"?\s*$', item)
+        m = re.match(r'(?s)(chunk \d+) of document (\S+) \(([^)]*)\):\s*"(.*)"?\s*$', item)
         if m:
-            snippet = m.group(3).strip().strip('"')
+            snippet = m.group(4).strip().strip('"')
             title_m = re.search(r"Meeting: (.+?) \[", snippet)
             date_m = re.search(r"\[date: ([0-9-]+)\]", snippet)
             # drop the doc-header tags from the preview; keep the speech
@@ -229,11 +253,65 @@ def _parse_citations(evidence: str) -> list[dict]:
                     "date": date_m.group(1) if date_m else None,
                     "snippet": (speech or snippet)[:280],
                     "ref": m.group(1),
+                    "doc": m.group(2),  # text_<md5> — resolved to a meeting below
                 }
             )
         else:
             out.append({"source": None, "date": None, "snippet": item[:280], "ref": None})
     return out
+
+
+def wants_temporal(query: str) -> bool:
+    """Heuristic: does this question care about time/ordering of events?"""
+    q = f" {query.lower()} "
+    hints = (
+        "when ", " latest", " last week", " last month", " yesterday", " today",
+        " recently", " this week", " timeline", " history", " over time",
+        " since ", " before ", " after ", " first ", " most recent", " changed",
+    )
+    return any(h in q for h in hints)
+
+
+async def _enrich_citations(result: dict) -> dict:
+    """Resolve each citation's cognee doc name (text_<md5>) to a meeting via
+    the docmap recorded at ingest time — citations become clickable links."""
+    docs = {c.get("doc") for c in result.get("citations", []) if isinstance(c, dict) and c.get("doc")}
+    if not docs:
+        return result
+    try:
+        from sqlalchemy import select
+
+        from api.db import async_session_maker
+        from api.models import Meeting, SyncState
+
+        async with async_session_maker() as session:
+            rows = (
+                await session.execute(
+                    select(SyncState).where(SyncState.key.in_([f"docmap:{d}" for d in docs]))
+                )
+            ).scalars().all()
+            doc_to_meeting = {r.key.removeprefix("docmap:"): r.value for r in rows}
+            meeting_ids = {uuid.UUID(v) for v in doc_to_meeting.values()}
+            meetings = {}
+            if meeting_ids:
+                mrows = (
+                    await session.execute(select(Meeting).where(Meeting.id.in_(meeting_ids)))
+                ).scalars().all()
+                meetings = {str(m.id): m for m in mrows}
+
+        for c in result.get("citations", []):
+            if not isinstance(c, dict):
+                continue
+            mid = doc_to_meeting.get(c.get("doc") or "")
+            meeting = meetings.get(mid) if mid else None
+            if meeting is not None:
+                c["meeting_id"] = mid
+                c["source"] = meeting.title
+                if meeting.started_at and not c.get("date"):
+                    c["date"] = meeting.started_at.date().isoformat()
+    except Exception:  # enrichment is best-effort — plain citations still render
+        log.exception("citation enrichment failed")
+    return result
 
 
 # process-wide singleton (async-safe: worst case is a duplicate user lookup)
