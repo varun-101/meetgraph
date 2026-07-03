@@ -128,8 +128,19 @@ class MemoryService:
             return {"answer": "", "citations": [], "raw": []}
         import cognee
         from cognee import SearchType
+        from cognee.modules.data.exceptions.exceptions import DatasetNotFoundError
 
         user = await self._get_org_user(org_id)
+        try:
+            return await self._search_inner(user, datasets, query, search_type, top_k)
+        except DatasetNotFoundError:
+            # Project exists but nothing ingested yet — empty memory, not an error.
+            return {"answer": "", "citations": [], "raw": []}
+
+    async def _search_inner(self, user, datasets, query, search_type, top_k) -> dict:
+        import cognee
+        from cognee import SearchType
+
         results = await cognee.search(
             query_text=query,
             query_type=getattr(SearchType, search_type, SearchType.GRAPH_COMPLETION),
@@ -157,6 +168,14 @@ class MemoryService:
         raw: list[Any] = []
         flat: list[Any] = []
         for r in results or []:
+            # cognee sometimes returns a stringified Python list — unwrap it
+            if isinstance(r, str) and r.startswith("[") and r.endswith("]"):
+                import ast
+
+                try:
+                    r = ast.literal_eval(r)
+                except (ValueError, SyntaxError):
+                    pass
             if isinstance(r, list):
                 flat.extend(r)
             else:

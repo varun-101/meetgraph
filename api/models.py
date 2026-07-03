@@ -320,6 +320,10 @@ class Recording(Base):
     participant_identity: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)  # seconds
+    # Seconds between recorder joining the room and this track's first frame.
+    # Tracks have independent t=0 (participants join at different times); the
+    # assembler needs this to put utterances on one meeting timeline.
+    start_offset: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
     )

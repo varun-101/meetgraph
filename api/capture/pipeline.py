@@ -17,30 +17,35 @@ log = logging.getLogger(__name__)
 
 async def process_meeting(meeting_id: uuid.UUID) -> None:
     """Full post-meeting pipeline. Safe to re-run (upserts the transcript)."""
+    tracks_src = await _load_recordings(meeting_id)
+    if not tracks_src:
+        log.warning("no recordings for meeting %s — nothing to transcribe", meeting_id)
+        return
     async with async_session_maker() as session:
-        recordings = (
-            await session.execute(select(Recording).where(Recording.meeting_id == meeting_id))
-        ).scalars().all()
-        if not recordings:
-            log.warning("no recordings for meeting %s — nothing to transcribe", meeting_id)
-            return
-        names = await _resolve_names(session, [r.participant_identity for r in recordings])
+        names = await _resolve_names(session, [ident for ident, _, _ in tracks_src])
 
-    # STT per track — CPU-bound, run in threads; per-track failure tolerated.
+    # STT per track — CPU-bound and memory-hungry: run SEQUENTIALLY (parallel
+    # tracks OOM'd on a 16GB box: mkl_malloc failures). Per-track failure tolerated.
     from stt.transcribe import transcribe_track
 
     loop = asyncio.get_running_loop()
-    results = await asyncio.gather(
-        *[loop.run_in_executor(None, transcribe_track, r.file_path) for r in recordings],
-        return_exceptions=True,
-    )
-
     tracks = []
-    for rec, segs in zip(recordings, results):
-        if isinstance(segs, BaseException):
-            log.error("STT failed for %s: %s", rec.file_path, segs)
+    for identity, path, offset in tracks_src:
+        try:
+            segs = await loop.run_in_executor(None, transcribe_track, path)
+        except Exception as exc:  # noqa: BLE001
+            log.error("STT failed for %s: %s", path, exc)
             continue
-        tracks.append((rec.participant_identity, names[rec.participant_identity], segs))
+        # Shift this track onto the shared meeting timeline (tracks start when
+        # their participant joins, not when the meeting does).
+        if offset:
+            for seg in segs:
+                seg["start"] += offset
+                seg["end"] += offset
+                for w in seg.get("words", []):
+                    w["start"] += offset
+                    w["end"] += offset
+        tracks.append((identity, names[identity], segs))
     if not tracks:
         log.error("all tracks failed STT for meeting %s", meeting_id)
         return
@@ -70,6 +75,35 @@ async def process_meeting(meeting_id: uuid.UUID) -> None:
         await ingest_meeting(meeting_id)
     except Exception:
         log.exception("memory ingest failed for meeting %s (status stays processing)", meeting_id)
+
+
+async def _load_recordings(meeting_id: uuid.UUID) -> list[tuple[str, str, float]]:
+    """(participant_identity, file_path, start_offset) per track. Retries
+    briefly — the recorder bot inserts rows as its streams finalize, racing
+    room_finished — then falls back to scanning the recordings directory
+    (files survive even if row insertion was lost; offset unknown → 0)."""
+    from pathlib import Path
+
+    from api.config import settings
+
+    for attempt in range(6):
+        async with async_session_maker() as session:
+            rows = (
+                await session.execute(
+                    select(Recording).where(Recording.meeting_id == meeting_id)
+                )
+            ).scalars().all()
+        if rows:
+            return [
+                (r.participant_identity, r.file_path, r.start_offset or 0.0) for r in rows
+            ]
+        await asyncio.sleep(5)
+
+    meeting_dir = Path(settings.recordings_dir) / str(meeting_id)
+    wavs = sorted(meeting_dir.glob("*.wav")) if meeting_dir.exists() else []
+    if wavs:
+        log.warning("no recording rows for %s — using %d WAVs from disk", meeting_id, len(wavs))
+    return [(p.stem, str(p), 0.0) for p in wavs if p.stem != "recorder-bot"]
 
 
 async def _resolve_names(session, identities: list[str]) -> dict[str, str]:

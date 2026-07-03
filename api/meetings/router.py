@@ -113,8 +113,10 @@ async def get_meeting(
 
 def mint_livekit_token(
     *, identity: str, name: str, room: str, role: str, ttl_minutes: int = 240,
-    can_publish: bool = True,
+    can_publish: bool = True, hidden: bool = False, recorder: bool = False,
 ) -> str:
+    # hidden+recorder matter for the bot: a visible participant keeps the room
+    # open forever, so room_finished never fires after the humans leave.
     return (
         lk_api.AccessToken(api_key=settings.livekit_api_key, api_secret=settings.livekit_api_secret)
         .with_identity(identity)
@@ -123,7 +125,8 @@ def mint_livekit_token(
         .with_ttl(timedelta(minutes=ttl_minutes))
         .with_grants(
             lk_api.VideoGrants(
-                room_join=True, room=room, can_subscribe=True, can_publish=can_publish
+                room_join=True, room=room, can_subscribe=True, can_publish=can_publish,
+                hidden=hidden, recorder=recorder,
             )
         )
         .to_jwt()
