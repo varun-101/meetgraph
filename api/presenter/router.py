@@ -55,6 +55,7 @@ async def presenter_status(
         return {"status": "none"}
     return {
         "status": s.status,
+        "mode": s.mode,
         "current_slide": s.current_slide,
         "slide_count": s.slide_count,
         "handling_command": s.handling_command,

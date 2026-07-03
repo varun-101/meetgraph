@@ -33,23 +33,30 @@ BOT_IDENTITIES = {"recorder-bot", "presenter-bot"}
 SLIDE_PAUSE_S = 2.0
 COMMAND_QUEUE_MAX = 4
 
-INTENT_SYSTEM = """You route a spoken/typed command for a slide presenter bot.
-Return STRICT JSON: {"action": "next"|"prev"|"goto"|"answer",
-"slide_index": int|null, "query": str|null}.
-- "goto" when the command asks for an existing slide; pick slide_index from
+INTENT_SYSTEM = """You route a spoken/typed command for a presenter bot that can
+show slides AND browse the live product UI. Return STRICT JSON:
+{"action": "next"|"prev"|"goto"|"answer"|"browse",
+ "slide_index": int|null, "query": str|null,
+ "target": "actions"|"brief"|"transcript"|"dashboard"|"deck"|null}.
+- "browse" when asked to open/show a live app surface: the action tracker
+  (target=actions), project brief page (brief), a meeting transcript
+  (transcript), the dashboard (dashboard), or to return to the slides (deck).
+- "goto" when the command asks for an existing SLIDE; pick slide_index from
   the numbered slide titles provided.
-- "answer" when it asks a question or for content not on an existing slide;
-  put the question in `query`.
-- "next"/"prev" for navigation. When unsure, prefer "answer"."""
+- "answer" when it asks a question; put the question in `query`.
+- "next"/"prev" for slide navigation. When unsure, prefer "answer"."""
 
 
 @dataclass
 class PresenterSession:
     meeting_id: uuid.UUID
     status: str = "preparing"  # preparing | live | stopped
+    mode: str = "deck"  # deck | actions | brief | transcript | dashboard
     current_slide: int = 0
     slide_count: int = 0
     handling_command: bool = False
+    app_authed: bool = False  # bot browser has an app token planted
+    deck_uri: str = ""
     error: str | None = None
     task: asyncio.Task | None = None
     commands: asyncio.Queue = field(
@@ -123,6 +130,7 @@ async def _run(session: PresenterSession) -> None:
         deck = await build_deck(project.id)
         session.slide_count = len(deck.slides)
         deck_path = render_deck(deck, meeting_id)
+        session.deck_uri = deck_path.as_uri()
 
         from playwright.async_api import async_playwright
 
@@ -230,7 +238,8 @@ async def _control_loop(
             session.handling_command = True
             try:
                 new_index = await _handle_command(
-                    session, page, deck, meeting_id, project, org_id, payload, user_id, render_deck
+                    session, page, deck, meeting_id, project, org_id,
+                    payload, user_id, render_deck, audio_source, synth,
                 )
                 if new_index is not None:
                     i = new_index
@@ -244,6 +253,9 @@ async def _control_loop(
 
 async def _present(session, page, deck, index, audio_source, synth) -> None:
     index = max(0, min(index, len(deck.slides) - 1))
+    if session.mode != "deck":  # coming back from a browse tour
+        await page.goto(session.deck_uri)
+        session.mode = "deck"
     session.current_slide = index
     session._interrupt.clear()
     await page.evaluate(f"window.showSlide({index})")
@@ -252,9 +264,11 @@ async def _present(session, page, deck, index, audio_source, synth) -> None:
 
 
 async def _handle_command(
-    session, page, deck, meeting_id, project, org_id, text, user_id, render_deck
+    session, page, deck, meeting_id, project, org_id, text, user_id,
+    render_deck, audio_source, synth,
 ) -> int | None:
-    """Resolve a command to an intent; may mutate the deck (answer slides)."""
+    """Resolve a command to an intent; may mutate the deck (answer slides)
+    or leave slide land entirely (browse tours of the real app UI)."""
     intent = await _resolve_intent(text, [s.title for s in deck.slides])
     action = intent.get("action")
     last = len(deck.slides) - 1
@@ -268,6 +282,16 @@ async def _handle_command(
         if isinstance(idx, int) and 0 <= idx <= last:
             return idx
         return None
+
+    if action == "browse":
+        target = intent.get("target") or "dashboard"
+        if target == "deck":
+            await page.goto(session.deck_uri)
+            session.mode = "deck"
+            await page.evaluate(f"window.showSlide({session.current_slide})")
+            return None  # silent return to where the deck left off
+        await _browse(session, page, target, project, user_id, audio_source, synth)
+        return None  # narration handled inside the tour; no slide change
 
     # answer: query project memory → new cited slide appended to the deck
     query = (intent.get("query") or text).strip()
@@ -307,6 +331,62 @@ async def _handle_command(
     return len(deck.slides) - 1
 
 
+async def _browse(session, page, target, project, user_id, audio_source, synth) -> None:
+    """Read-only tour of a real app page: authenticate as the commanding user,
+    navigate, glide the cursor over content, narrate from DB rows."""
+    from api.presenter.tours import (
+        ROUTES,
+        build_tour,
+        ensure_app_auth,
+        inject_cursor,
+        move_cursor,
+    )
+
+    if target not in ROUTES:
+        target = "dashboard"
+
+    if not session.app_authed:
+        token = await _mint_app_token(user_id)
+        await ensure_app_auth(page, token, settings.web_origin)
+        session.app_authed = True
+
+    meeting_for_route, steps = await build_tour(target, project.id)
+    route = ROUTES[target](project.id, meeting_for_route)
+    if target == "transcript" and meeting_for_route is None:
+        # no transcript to show — just say so from wherever we are
+        for _sel, text in steps:
+            await _speak(audio_source, await synth(text), session)
+        return
+
+    await page.goto(f"{settings.web_origin}{route}", wait_until="networkidle")
+    session.mode = target
+    session._interrupt.clear()
+    await inject_cursor(page)
+
+    for selector, narration in steps:
+        if session._stop.is_set() or session._interrupt.is_set():
+            return
+        if selector:
+            with contextlib.suppress(Exception):
+                await move_cursor(page, selector)
+        await _speak(audio_source, await synth(narration), session)
+    # stay on this page until the next command
+
+
+async def _mint_app_token(user_id: uuid.UUID) -> str:
+    """Short-lived app JWT for the commanding user — the bot's browser sees
+    exactly what that user is allowed to see (RBAC holds in browse mode)."""
+    from api.auth.users import get_jwt_strategy
+    from api.db import async_session_maker
+    from api.models import User
+
+    async with async_session_maker() as db:
+        user = await db.get(User, user_id)
+        if user is None:
+            raise RuntimeError("commanding user not found")
+    return await get_jwt_strategy().write_token(user)
+
+
 async def _resolve_intent(text: str, slide_titles: list[str]) -> dict:
     """DeepSeek JSON intent; heuristic fallback keeps commands working offline."""
     if settings.llm_api_key:
@@ -332,14 +412,32 @@ async def _resolve_intent(text: str, slide_titles: list[str]) -> dict:
     return parse_intent_fallback(text, slide_titles)
 
 
+BROWSE_KEYWORDS = {
+    "actions": ("action tracker", "action items page", "actions page", "the tracker"),
+    "brief": ("brief page", "show the brief", "open the brief"),
+    "transcript": ("transcript", "last meeting"),
+    "dashboard": ("dashboard",),
+    "deck": ("slides", "deck", "back to the presentation"),
+}
+
+
 def parse_intent_fallback(text: str, slide_titles: list[str]) -> dict:
-    """No-LLM intent routing: nav keywords → nav; title word overlap → goto;
-    otherwise treat as a memory question."""
+    """No-LLM intent routing: nav keywords → nav; browse keywords → app tour;
+    title word overlap → goto; otherwise treat as a memory question."""
     t = text.lower().strip()
     if t in ("next", "next slide", "forward", "continue"):
         return {"action": "next", "slide_index": None, "query": None}
     if t in ("back", "prev", "previous", "go back", "previous slide"):
         return {"action": "prev", "slide_index": None, "query": None}
+    # browse only reads as a command with a show/open verb (or a bare target) —
+    # "what did we decide in the last meeting?" must stay a memory question
+    is_showish = any(v in t for v in ("show", "open", "go to", "display", "pull up")) or len(t) <= 12
+    if is_showish:
+        for target, keywords in BROWSE_KEYWORDS.items():
+            if any(k in t for k in keywords):
+                return {
+                    "action": "browse", "slide_index": None, "query": None, "target": target
+                }
     words = set(t.replace("?", "").split())
     best_i, best_overlap = None, 0
     for i, title in enumerate(slide_titles):

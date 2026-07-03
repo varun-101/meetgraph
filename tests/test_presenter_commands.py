@@ -26,3 +26,20 @@ def test_single_word_overlap_is_not_a_goto():
     # "decisions" alone overlaps one title word — too weak, treat as question
     intent = parse_intent_fallback("decisions?", TITLES)
     assert intent["action"] == "answer"
+
+
+def test_browse_needs_show_verb():
+    intent = parse_intent_fallback("show the action tracker", TITLES)
+    assert intent["action"] == "browse" and intent["target"] == "actions"
+    intent = parse_intent_fallback("open the transcript", TITLES)
+    assert intent["action"] == "browse" and intent["target"] == "transcript"
+    # a question that merely mentions the last meeting stays a memory question
+    intent = parse_intent_fallback("what did we decide in the last meeting?", TITLES)
+    assert intent["action"] == "answer"
+
+
+def test_bare_target_is_browse():
+    intent = parse_intent_fallback("dashboard", TITLES)
+    assert intent["action"] == "browse" and intent["target"] == "dashboard"
+    intent = parse_intent_fallback("slides", TITLES)
+    assert intent["action"] == "browse" and intent["target"] == "deck"

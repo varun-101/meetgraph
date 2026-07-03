@@ -154,7 +154,9 @@ function PresenterBar({ meetingId }: { meetingId: string }) {
       {live && (
         <>
           <span className="px-1.5 font-mono text-[11px] text-accent">
-            slide {(status.current_slide ?? 0) + 1}/{status.slide_count ?? "?"}
+            {status.mode && status.mode !== "deck"
+              ? `browsing: ${status.mode}`
+              : `slide ${(status.current_slide ?? 0) + 1}/${status.slide_count ?? "?"}`}
           </span>
           <form
             onSubmit={(e) => {

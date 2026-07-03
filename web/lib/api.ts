@@ -167,6 +167,7 @@ export const patchAction = (id: string, status: string) =>
 
 export interface PresenterStatus {
   status: "none" | "preparing" | "live" | "stopped";
+  mode?: string; // deck | actions | brief | transcript | dashboard
   current_slide?: number;
   slide_count?: number;
   handling_command?: boolean;
