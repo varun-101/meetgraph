@@ -37,7 +37,8 @@ class MemoryUnavailable(RuntimeError):
 
 
 def _org_email(org_id: uuid.UUID) -> str:
-    return f"org-{org_id}@meetgraph.local"
+    # NOT .local/.internal — cognee's email validator rejects special-use TLDs
+    return f"org-{org_id}@meetgraph.dev"
 
 
 def _org_password(org_id: uuid.UUID) -> str:
@@ -52,6 +53,18 @@ class MemoryService:
 
     def __init__(self) -> None:
         self._org_users: dict[uuid.UUID, Any] = {}
+        self._migrated = False
+
+    async def _ensure_ready(self) -> None:
+        """One-time cognee schema init (fresh DBs need startup migrations)."""
+        if self._migrated:
+            return
+        try:
+            from cognee.modules.engine.operations.setup import setup
+        except ImportError as exc:
+            raise MemoryUnavailable("cognee is not installed") from exc
+        await setup()  # creates cognee's relational + pgvector schemas if absent
+        self._migrated = True
 
     # ----- org (workspace) resolution -----
 
@@ -59,6 +72,7 @@ class MemoryService:
         """Get-or-create the org's cognee service user (workspace≈org seam)."""
         if org_id in self._org_users:
             return self._org_users[org_id]
+        await self._ensure_ready()
         try:
             from cognee.modules.users.methods import create_user
         except ImportError as exc:
@@ -141,7 +155,13 @@ class MemoryService:
         answer_parts: list[str] = []
         citations: list[str] = []
         raw: list[Any] = []
+        flat: list[Any] = []
         for r in results or []:
+            if isinstance(r, list):
+                flat.extend(r)
+            else:
+                flat.append(r)
+        for r in flat:
             raw.append(str(r))
             if isinstance(r, str):
                 text = r

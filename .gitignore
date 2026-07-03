@@ -20,6 +20,9 @@ npm-debug.log*
 .env.*
 !.env.template
 
+# Local binaries (livekit-server.exe etc.)
+tools/
+
 # Data artifacts
 recordings/
 *.wav
